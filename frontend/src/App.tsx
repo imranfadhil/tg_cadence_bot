@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, Info, ShieldAlert } from 'lucide-react';
+import { CheckCircle2, Info, KeyRound, Lock, ShieldAlert } from 'lucide-react';
 import {
   CheckInResult,
   GoalStatus,
   HorizonLevel,
+  UnauthorizedError,
   cadenceApi,
 } from './lib/api';
 import { initTelegramLightTheme, triggerHaptic } from './lib/telegram';
@@ -21,6 +22,9 @@ export const App: React.FC = () => {
   const [horizonFilter, setHorizonFilter] = useState<HorizonLevel | 'ALL'>('ALL');
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [coachBanner, setCoachBanner] = useState<string | null>(null);
+  const [pinInput, setPinInput] = useState('');
+  const [pinError, setPinError] = useState<string | null>(null);
+  const [unlocking, setUnlocking] = useState(false);
 
   useEffect(() => {
     initTelegramLightTheme();
@@ -29,22 +33,48 @@ export const App: React.FC = () => {
   const todayQuery = useQuery({
     queryKey: ['todayView'],
     queryFn: cadenceApi.getTodayView,
+    retry: (failureCount, error) => {
+      if (error instanceof UnauthorizedError) return false;
+      return failureCount < 1;
+    },
   });
+
+  const isLocked = todayQuery.error instanceof UnauthorizedError;
 
   const treeQuery = useQuery({
     queryKey: ['goalsTree'],
     queryFn: cadenceApi.getGoalsTree,
+    enabled: !isLocked && todayQuery.isSuccess,
   });
 
   const scorecardQuery = useQuery({
     queryKey: ['scorecard'],
     queryFn: cadenceApi.getScorecard,
+    enabled: !isLocked && todayQuery.isSuccess,
   });
 
   const refreshAll = () => {
     queryClient.invalidateQueries({ queryKey: ['todayView'] });
     queryClient.invalidateQueries({ queryKey: ['goalsTree'] });
     queryClient.invalidateQueries({ queryKey: ['scorecard'] });
+  };
+
+  const handleUnlockSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pinInput.trim()) return;
+    setUnlocking(true);
+    setPinError(null);
+    try {
+      await cadenceApi.unlockWithPassphrase(pinInput.trim());
+      triggerHaptic('medium');
+      setPinInput('');
+      refreshAll();
+    } catch {
+      triggerHaptic('heavy');
+      setPinError('Invalid passphrase or PIN. Please try again.');
+    } finally {
+      setUnlocking(false);
+    }
   };
 
   const toggleMutation = useMutation({
@@ -107,6 +137,58 @@ export const App: React.FC = () => {
       refreshAll();
     },
   });
+
+  // Clean Light-Theme Passphrase / PIN Gate Screen
+  if (isLocked) {
+    return (
+      <div className="min-h-screen bg-[#FAFAFA] text-[#18181B] flex items-center justify-center p-4">
+        <form
+          onSubmit={handleUnlockSubmit}
+          className="w-full max-w-sm bg-white rounded-2xl border border-zinc-200 shadow-micro p-6 space-y-4"
+        >
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-micro">
+              <Lock className="w-4 h-4" />
+            </div>
+            <div>
+              <h1 className="text-sm font-semibold text-zinc-900">
+                Cadence Studio Locked
+              </h1>
+              <p className="text-xs text-zinc-500">
+                Enter your access passphrase or PIN
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <div className="relative">
+              <KeyRound className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="password"
+                autoFocus
+                required
+                value={pinInput}
+                onChange={(e) => setPinInput(e.target.value)}
+                placeholder="Passphrase / PIN..."
+                className="w-full pl-9 pr-3 py-2 text-xs font-mono rounded-xl border border-zinc-200 bg-[#FAFAFA] text-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-600"
+              />
+            </div>
+            {pinError && (
+              <p className="text-[11px] text-rose-600 font-medium">{pinError}</p>
+            )}
+          </div>
+
+          <button
+            type="submit"
+            disabled={unlocking}
+            className="w-full py-2 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-xs font-semibold transition shadow-micro"
+          >
+            {unlocking ? 'Verifying...' : 'Unlock Cadence'}
+          </button>
+        </form>
+      </div>
+    );
+  }
 
   const summary = todayQuery.data?.summary;
   const goals = todayQuery.data?.goals || [];
@@ -197,7 +279,7 @@ export const App: React.FC = () => {
           <div className="space-y-2.5">
             <div className="flex items-center justify-between px-0.5">
               <span className="text-[11px] font-mono uppercase tracking-wider text-zinc-400">
-                Today&apos;s Controllable Lead Measures ({ todayQuery.data?.date || 'Today' })
+                Today&apos;s Controllable Lead Measures ({todayQuery.data?.date || 'Today'})
               </span>
               <span className="text-[11px] font-mono text-zinc-400">
                 1-Tap Logging
@@ -271,4 +353,3 @@ export const App: React.FC = () => {
 };
 
 export default App;
-

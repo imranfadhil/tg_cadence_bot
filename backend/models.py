@@ -69,6 +69,7 @@ class User(Base):
     coach_intensity: Mapped[CoachIntensity] = mapped_column(
         SqlEnum(CoachIntensity), default=CoachIntensity.STANDARD
     )
+    is_authorized: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -169,4 +170,3 @@ class CoachState(Base):
     )
 
     user: Mapped["User"] = relationship("User", back_populates="coach_state")
-

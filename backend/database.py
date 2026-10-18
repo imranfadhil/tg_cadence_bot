@@ -327,7 +327,16 @@ async def seed_demo_data(session: AsyncSession, user_id: int = settings.DEMO_USE
 
 
 async def init_db() -> None:
+    from sqlalchemy import text
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        try:
+            await conn.execute(
+                text("ALTER TABLE users ADD COLUMN is_authorized INTEGER DEFAULT 0")
+            )
+        except Exception:
+            pass
     async with AsyncSessionLocal() as session:
         await seed_demo_data(session, settings.DEMO_USER_ID)
+

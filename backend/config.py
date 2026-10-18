@@ -1,3 +1,4 @@
+import hmac
 from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -18,6 +19,8 @@ class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
     PORT: int = 8000
     MINI_APP_URL: str = "http://localhost:8000"
+
+    ACCESS_PASSPHRASE: str = ""
 
     DATABASE_URL: str = f"sqlite+aiosqlite:///{(DATA_DIR / 'cadence.db').as_posix()}"
 
@@ -44,6 +47,20 @@ class Settings(BaseSettings):
         if self.DATABASE_URL.startswith("sqlite+aiosqlite://"):
             return self.DATABASE_URL.replace("sqlite+aiosqlite://", "sqlite://", 1)
         return self.DATABASE_URL
+
+    @property
+    def is_passphrase_enabled(self) -> bool:
+        return bool((self.ACCESS_PASSPHRASE or "").strip())
+
+    def verify_passphrase(self, candidate: str) -> bool:
+        """Constant-time verification of the user-supplied passphrase or PIN."""
+        expected = (self.ACCESS_PASSPHRASE or "").strip()
+        if not expected:
+            return True
+        provided = (candidate or "").strip()
+        if not provided:
+            return False
+        return hmac.compare_digest(expected.encode("utf-8"), provided.encode("utf-8"))
 
 
 settings = Settings()

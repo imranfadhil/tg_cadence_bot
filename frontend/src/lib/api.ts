@@ -4,6 +4,35 @@ export type HorizonLevel = 'ANNUAL' | 'MONTHLY' | 'WEEKLY' | 'DAILY';
 export type GoalStatus = 'ACTIVE' | 'PAUSED' | 'COMPLETED' | 'ARCHIVED';
 export type CheckInResult = 'DONE' | 'PARTIAL' | 'MISSED' | 'REST_DAY';
 
+const PASSPHRASE_STORAGE_KEY = 'cadence_access_passphrase';
+
+export class UnauthorizedError extends Error {
+  constructor(message = 'Passphrase or PIN required') {
+    super(message);
+    this.name = 'UnauthorizedError';
+  }
+}
+
+export function getStoredPassphrase(): string {
+  try {
+    return localStorage.getItem(PASSPHRASE_STORAGE_KEY) || '';
+  } catch {
+    return '';
+  }
+}
+
+export function setStoredPassphrase(passphrase: string): void {
+  try {
+    if (passphrase) {
+      localStorage.setItem(PASSPHRASE_STORAGE_KEY, passphrase);
+    } else {
+      localStorage.removeItem(PASSPHRASE_STORAGE_KEY);
+    }
+  } catch {
+    // Ignore storage errors in private mode
+  }
+}
+
 export interface MomentumSummary {
   user_id: number;
   first_name: string;
@@ -119,15 +148,25 @@ export interface CheckInToggleResponse {
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers || {});
   headers.set('Content-Type', 'application/json');
+
   const initData = getTelegramInitData();
   if (initData) {
     headers.set('X-Telegram-Init-Data', initData);
+  }
+
+  const storedPin = getStoredPassphrase();
+  if (storedPin) {
+    headers.set('X-Access-Passphrase', storedPin);
   }
 
   const response = await fetch(path, {
     ...init,
     headers,
   });
+
+  if (response.status === 401) {
+    throw new UnauthorizedError('Passphrase or PIN required');
+  }
 
   if (!response.ok) {
     const errText = await response.text();
@@ -137,6 +176,18 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const cadenceApi = {
+  unlockWithPassphrase: async (passphrase: string) => {
+    const res = await apiFetch<{ authorized: boolean; message: string }>(
+      '/api/auth/unlock',
+      {
+        method: 'POST',
+        body: JSON.stringify({ passphrase }),
+      }
+    );
+    setStoredPassphrase(passphrase);
+    return res;
+  },
+
   getTodayView: () => apiFetch<TodayViewResponse>('/api/checkins/today'),
 
   toggleCheckIn: (payload: {
@@ -165,7 +216,9 @@ export const cadenceApi = {
       body: JSON.stringify(payload),
     }),
 
-  resolveDiagnostic: (action: 'LOG_YESTERDAY_ALL' | 'CRAZY_DAY_RESUME' | 'ADJUST_WEEKLY_LOAD') =>
+  resolveDiagnostic: (
+    action: 'LOG_YESTERDAY_ALL' | 'CRAZY_DAY_RESUME' | 'ADJUST_WEEKLY_LOAD'
+  ) =>
     apiFetch<{ message: string }>('/api/checkins/diagnostic', {
       method: 'POST',
       body: JSON.stringify({ action }),
@@ -220,4 +273,3 @@ export const cadenceApi = {
       body: JSON.stringify(proposal),
     }),
 };
-

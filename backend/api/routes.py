@@ -6,6 +6,7 @@ import uuid
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -39,42 +40,80 @@ from backend.services.streak_engine import (
 router = APIRouter(tags=["cadence"])
 
 
-async def resolve_current_user_id(
-    x_telegram_init_data: Optional[str] = Header(default=None),
-    x_user_id: Optional[int] = Header(default=None),
-    db: AsyncSession = Depends(get_db),
-) -> int:
-    """Extracts the Telegram user ID from `initData` or falls back to the seeded Demo User."""
-    if x_user_id:
-        await ensure_user(db, x_user_id)
-        await seed_demo_data(db, x_user_id)
-        return x_user_id
+class AuthUnlockRequest(BaseModel):
+    passphrase: str
 
+
+async def _extract_user_id_from_headers(
+    x_telegram_init_data: Optional[str],
+    x_user_id: Optional[int],
+) -> int:
+    if x_user_id:
+        return x_user_id
     if x_telegram_init_data:
         try:
             parsed = dict(urllib.parse.parse_qsl(x_telegram_init_data))
             user_raw = parsed.get("user")
             if user_raw:
                 user_obj = json.loads(user_raw)
-                uid = int(user_obj["id"])
-                await ensure_user(
-                    db,
-                    uid,
-                    first_name=user_obj.get("first_name", "Athlete"),
-                    username=user_obj.get("username"),
-                )
-                await seed_demo_data(db, uid)
-                return uid
+                return int(user_obj["id"])
         except Exception:
             pass
-
-    await seed_demo_data(db, settings.DEMO_USER_ID)
     return settings.DEMO_USER_ID
+
+
+async def resolve_current_user_id(
+    x_telegram_init_data: Optional[str] = Header(default=None),
+    x_user_id: Optional[int] = Header(default=None),
+    x_access_passphrase: Optional[str] = Header(default=None),
+    db: AsyncSession = Depends(get_db),
+) -> int:
+    """Extracts the Telegram user ID and enforces ACCESS_PASSPHRASE / PIN gate."""
+    uid = await _extract_user_id_from_headers(x_telegram_init_data, x_user_id)
+    user = await ensure_user(db, uid)
+
+    if settings.is_passphrase_enabled:
+        header_valid = bool(
+            x_access_passphrase and settings.verify_passphrase(x_access_passphrase)
+        )
+        # If opened inside Telegram WebApp by an already-unlocked Telegram user, allow automatically
+        telegram_user_unlocked = bool(x_telegram_init_data and user.is_authorized == 1)
+
+        if header_valid and not user.is_authorized:
+            user.is_authorized = 1
+            await db.commit()
+
+        if not (header_valid or telegram_user_unlocked):
+            raise HTTPException(
+                status_code=401,
+                detail="Access restricted. Valid passphrase or PIN required.",
+            )
+
+    await seed_demo_data(db, uid)
+    return uid
 
 
 @router.get("/health")
 async def health_check() -> dict[str, str]:
     return {"status": "ok", "service": "cadence-featherweight-api"}
+
+
+@router.post("/auth/unlock")
+async def api_auth_unlock(
+    payload: AuthUnlockRequest,
+    x_telegram_init_data: Optional[str] = Header(default=None),
+    x_user_id: Optional[int] = Header(default=None),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, bool | str]:
+    if not settings.verify_passphrase(payload.passphrase):
+        raise HTTPException(status_code=401, detail="Invalid passphrase or PIN.")
+
+    uid = await _extract_user_id_from_headers(x_telegram_init_data, x_user_id)
+    user = await ensure_user(db, uid)
+    user.is_authorized = 1
+    await db.commit()
+    await seed_demo_data(db, uid)
+    return {"authorized": True, "message": "Access granted."}
 
 
 @router.get("/checkins/today", response_model=TodayViewResponse)
@@ -197,6 +236,7 @@ async def api_get_scorecard(
 @router.post("/onboarding/decompose", response_model=CascadeProposal)
 async def api_onboarding_decompose(
     payload: OnboardingBrainDumpRequest,
+    _user_id: int = Depends(resolve_current_user_id),
 ) -> CascadeProposal:
     proposal = await decompose_goals_to_cascade(
         payload.text, less_aggressive=payload.less_aggressive
@@ -207,6 +247,7 @@ async def api_onboarding_decompose(
 @router.post("/onboarding/scale-down", response_model=CascadeProposal)
 async def api_onboarding_scale_down(
     proposal: CascadeProposal,
+    _user_id: int = Depends(resolve_current_user_id),
 ) -> CascadeProposal:
     return scale_down_proposal(proposal)
 

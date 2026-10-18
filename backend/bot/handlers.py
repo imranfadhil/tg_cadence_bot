@@ -89,6 +89,18 @@ async def cmd_start(message: Message, db: AsyncSession, db_user: User) -> None:
     )
 
 
+@router.message(Command("lock", "logout"))
+async def cmd_lock(message: Message, db: AsyncSession, db_user: User) -> None:
+    db_user.is_authorized = 0
+    await db.commit()
+    await message.answer(
+        "🔒 <b>Session Locked.</b>\n"
+        "Send your passphrase / PIN anytime to unlock Cadence again.",
+        parse_mode="HTML",
+    )
+
+
+
 @router.message(Command("setup"))
 async def cmd_setup(message: Message, db: AsyncSession, db_user: User) -> None:
     state = await _get_or_create_coach_state(db, db_user.id)

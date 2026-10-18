@@ -121,6 +121,8 @@ async def run_ritual_tick() -> None:
         users = res.scalars().all()
 
         for user in users:
+            if settings.is_passphrase_enabled and not user.is_authorized:
+                continue
             try:
                 tz = ZoneInfo(user.timezone or "Asia/Kuala_Lumpur")
             except Exception:

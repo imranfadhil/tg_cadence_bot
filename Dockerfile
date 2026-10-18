@@ -14,7 +14,16 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 COPY backend/requirements.txt ./backend/requirements.txt
-RUN pip install --no-cache-dir -r backend/requirements.txt
+RUN pip install --no-cache-dir -r backend/requirements.txt && \
+    python -c "import platform, urllib.request, ssl, certifi, shutil, os; \
+    arch = 'arm64' if platform.machine() in ('aarch64', 'arm64') else 'amd64'; \
+    url = f'https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-{arch}'; \
+    ctx = ssl.create_default_context(cafile=certifi.where()); \
+    req = urllib.request.urlopen(url, context=ctx); \
+    open('/usr/local/bin/cloudflared', 'wb').write(req.read()); \
+    os.chmod('/usr/local/bin/cloudflared', 0o755); \
+    os.makedirs('/etc/ssl/certs', exist_ok=True); \
+    shutil.copyfile(certifi.where(), '/etc/ssl/certs/ca-certificates.crt') if not os.path.exists('/etc/ssl/certs/ca-certificates.crt') else None"
 
 COPY backend/ ./backend/
 COPY --from=frontend-builder /build/frontend/dist ./frontend/dist

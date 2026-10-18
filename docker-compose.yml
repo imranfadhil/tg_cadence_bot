@@ -1,14 +1,14 @@
 services:
   cadence:
     build: .
-    container_name: cadence_app
+    container_name: tg_cadence_bot
     restart: unless-stopped
     env_file: .env
     volumes:
       - ./data:/app/data
     ports:
-      - "127.0.0.1:8040:8000" # Reverse proxy via existing Nginx/Caddy on droplet
+      - "127.0.0.1:${WEBAPP_PORT:-8040}:8000" # Isolated from pemuda_surau (8080) & tg_expense_bot (8090)
     deploy:
       resources:
         limits:
-          memory: 150M
+          memory: 256M

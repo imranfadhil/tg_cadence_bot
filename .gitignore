@@ -12,10 +12,12 @@ env/
 data/*.db
 data/*.db-wal
 data/*.db-shm
+backups/
 
 # Environment
 .env
 .env.local
+deploy/config.bat
 
 # Frontend
 frontend/node_modules/

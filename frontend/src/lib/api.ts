@@ -272,4 +272,9 @@ export const cadenceApi = {
       method: 'POST',
       body: JSON.stringify(proposal),
     }),
+
+  resetCadence: () =>
+    apiFetch<{ message: string }>('/api/onboarding/reset', {
+      method: 'POST',
+    }),
 };

@@ -74,14 +74,17 @@ async def seed_demo_data(session: AsyncSession, user_id: int = settings.DEMO_USE
         await session.flush()
 
     state_res = await session.execute(select(CoachState).where(CoachState.user_id == user_id))
-    if not state_res.scalar_one_or_none():
-        session.add(CoachState(user_id=user_id))
+    existing_state = state_res.scalar_one_or_none()
 
     goals_res = await session.execute(select(GoalNode).where(GoalNode.user_id == user_id))
     existing_goals = goals_res.scalars().all()
-    if existing_goals:
+    if existing_goals or existing_state:
+        if not existing_state:
+            session.add(CoachState(user_id=user_id))
         await session.commit()
         return user
+
+    session.add(CoachState(user_id=user_id))
 
     # --- Tree 1: Engineering (Ship v2 Library & Core Systems) ---
     annual_eng = GoalNode(

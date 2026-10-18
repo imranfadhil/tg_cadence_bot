@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
-import { Check, Sparkles, TrendingDown, X } from 'lucide-react';
+import { Check, RotateCcw, Sparkles, TrendingDown, X } from 'lucide-react';
 import { CascadeProposal, cadenceApi } from '../lib/api';
 import { triggerHaptic } from '../lib/telegram';
 
 interface OnboardingModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onLockedIn: () => void;
+  onLockedIn: (message?: string) => void;
 }
 
 export const OnboardingModal: React.FC<OnboardingModalProps> = ({
@@ -14,9 +14,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   onClose,
   onLockedIn,
 }) => {
-  const [brainDump, setBrainDump] = useState(
-    'This year I want to ship v2 of my open-source AI engineering library, run a sub-20 minute 5K while maintaining compound strength, and read 24 books.'
-  );
+  const [brainDump, setBrainDump] = useState('');
   const [proposal, setProposal] = useState<CascadeProposal | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -29,6 +27,19 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
     try {
       const res = await cadenceApi.decomposeOnboarding(brainDump, false);
       setProposal(res);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResetAll = async () => {
+    triggerHaptic('heavy');
+    setLoading(true);
+    try {
+      const res = await cadenceApi.resetCadence();
+      setProposal(null);
+      setBrainDump('');
+      onLockedIn(res.message);
     } finally {
       setLoading(false);
     }
@@ -52,7 +63,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
     setLoading(true);
     try {
       await cadenceApi.lockInProposal(proposal);
-      onLockedIn();
+      onLockedIn('New AI Goal Cascade locked in across all 4 horizons.');
       onClose();
     } finally {
       setLoading(false);
@@ -87,19 +98,31 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
 
         {/* Input Box */}
         <div className="space-y-2">
-          <label className="block text-xs font-medium text-zinc-700">
-            Describe your Annual Goals (or send a voice note in Telegram chat):
-          </label>
+          <div className="flex items-center justify-between gap-2">
+            <label className="block text-xs font-medium text-zinc-700">
+              Describe your Annual Goals (or send a voice note in Telegram chat):
+            </label>
+            <button
+              type="button"
+              disabled={loading}
+              onClick={handleResetAll}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 text-[11px] font-medium transition shrink-0"
+              title="Wipe all existing template goals and check-in history"
+            >
+              <RotateCcw className="w-3 h-3" />
+              <span>Reset All</span>
+            </button>
+          </div>
           <textarea
             rows={3}
             value={brainDump}
             onChange={(e) => setBrainDump(e.target.value)}
             className="w-full rounded-xl border border-zinc-200 bg-[#FAFAFA] p-3 text-xs text-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-600"
-            placeholder="Describe your top goals for the year..."
+            placeholder="e.g. This year I want to ship v2 of my library, run a sub-20m 5K while lifting 3x/week, and read 24 books..."
           />
           <button
             type="button"
-            disabled={loading}
+            disabled={loading || !brainDump.trim()}
             onClick={handleDecompose}
             className="w-full py-2 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-xs font-medium transition shadow-micro"
           >

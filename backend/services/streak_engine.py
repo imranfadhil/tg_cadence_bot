@@ -5,13 +5,14 @@ import uuid
 from datetime import date, timedelta
 from typing import Optional
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.models import (
     CheckInLog,
     CheckInResult,
     CoachIntensity,
+    CoachState,
     GoalNode,
     GoalStatus,
     HorizonLevel,
@@ -191,7 +192,7 @@ async def compute_momentum_summary(
                 points += 1.0
         cadence_score = min(100, max(0, int(round((points / len(week_logs)) * 100))))
     else:
-        cadence_score = 88
+        cadence_score = 0
 
     max_streak = max((n.streak_count for n in daily_nodes), default=0)
     earned_silence_count = sum(1 for n in active_daily if is_earned_silence(n))
@@ -518,6 +519,28 @@ async def handle_diagnostic_action(
     return "Diagnostic check acknowledged."
 
 
+async def reset_user_cadence(session: AsyncSession, user_id: int) -> None:
+    """Wipes all goals, streaks, and check-in logs for a user and sets onboarding input ready."""
+    await ensure_user(session, user_id)
+    await session.execute(delete(CheckInLog).where(CheckInLog.user_id == user_id))
+    await session.execute(delete(GoalNode).where(GoalNode.user_id == user_id))
+
+    state_res = await session.execute(
+        select(CoachState).where(CoachState.user_id == user_id)
+    )
+    state = state_res.scalar_one_or_none()
+    if not state:
+        state = CoachState(user_id=user_id, awaiting_onboarding_input=1)
+        session.add(state)
+    else:
+        state.pending_proposal_json = None
+        state.last_pulse_sent_date = None
+        state.last_diagnostic_sent_date = None
+        state.awaiting_onboarding_input = 1
+
+    await session.commit()
+
+
 async def apply_cascade_proposal(
     session: AsyncSession,
     user_id: int,
@@ -527,9 +550,8 @@ async def apply_cascade_proposal(
     """Persists an AI-generated CascadeProposal hierarchy into GoalNode adjacency rows."""
     await ensure_user(session, user_id)
     if replace_existing:
-        existing = await _load_user_nodes(session, user_id)
-        for node in existing.values():
-            node.status = GoalStatus.ARCHIVED
+        await session.execute(delete(CheckInLog).where(CheckInLog.user_id == user_id))
+        await session.execute(delete(GoalNode).where(GoalNode.user_id == user_id))
         await session.flush()
 
     for annual in proposal.annual_goals:

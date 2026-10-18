@@ -36,6 +36,7 @@ from backend.services.streak_engine import (
     get_scorecard,
     get_today_view,
     handle_diagnostic_action,
+    reset_user_cadence,
     toggle_checkin,
 )
 
@@ -84,6 +85,7 @@ async def cmd_start(message: Message, db: AsyncSession, db_user: User) -> None:
         f"<b>Cadence — Performance & Multi-Horizon Accountability</b>\n\n"
         f"Welcome, <b>{db_user.first_name}</b>. Rhythm: <code>{view.summary.cadence_score}% On Cadence</code>.\n\n"
         f"• Send a <b>voice note</b> or run <code>/setup</code> to decompose your Annual goals into Daily Lead Measures.\n"
+        f"• Run <code>/reset</code> to wipe existing template/goals and start fresh.\n"
         f"• Run <code>/today</code> for zero-friction 1-tap check-ins.\n"
         f"• Run <code>/brief</code>, <code>/pulse</code>, or <code>/strategy</code> to test scheduled rituals."
     )
@@ -102,6 +104,23 @@ async def cmd_lock(message: Message, db: AsyncSession, db_user: User) -> None:
         parse_mode="HTML",
     )
 
+
+@router.message(Command("reset"))
+async def cmd_reset(message: Message, db: AsyncSession, db_user: User) -> None:
+    await reset_user_cadence(db, db_user.id)
+    raw_args = (message.text or "").partition(" ")[2].strip()
+    if raw_args:
+        await cmd_setup(message, db, db_user)
+        return
+
+    await message.answer(
+        "🧹 <b>Cadence Reset Complete.</b>\n\n"
+        "All previous template goals, streaks, and check-in history have been wiped clean.\n\n"
+        "🎙️ <b>Ready for your goals:</b>\n"
+        "Send a <b>voice note</b> or a <b>text paragraph</b> right now describing your main goals for the year, "
+        "and I will map your Annual Lag Measures into controllable Daily Lead Measures.",
+        parse_mode="HTML",
+    )
 
 
 @router.message(Command("setup"))

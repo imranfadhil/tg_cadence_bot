@@ -74,6 +74,7 @@ class DatabaseAndUserMiddleware(BaseMiddleware):
                             f"🔓 <b>Access Granted — Welcome, {user.first_name}</b>\n\n"
                             f"Rhythm: <code>{view.summary.cadence_score}% On Cadence</code>.\n"
                             f"• Send a <b>voice note</b> or run <code>/setup</code> to build your Goal Cascade.\n"
+                            f"• Run <code>/reset</code> to wipe template goals and start fresh.\n"
                             f"• Run <code>/today</code> for 1-tap check-ins.\n"
                             f"• Run <code>/lock</code> anytime to lock your session.",
                             parse_mode="HTML",

@@ -34,6 +34,7 @@ from backend.services.streak_engine import (
     get_scorecard,
     get_today_view,
     handle_diagnostic_action,
+    reset_user_cadence,
     toggle_checkin,
 )
 
@@ -269,3 +270,13 @@ async def api_onboarding_lock_in(
     db: AsyncSession = Depends(get_db),
 ) -> list[GoalTreeNodeDTO]:
     return await apply_cascade_proposal(db, user_id, proposal, replace_existing=True)
+
+
+@router.post("/onboarding/reset")
+async def api_onboarding_reset(
+    user_id: int = Depends(resolve_current_user_id),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, str]:
+    await reset_user_cadence(db, user_id)
+    return {"message": "All template goals and check-in history cleared."}
+

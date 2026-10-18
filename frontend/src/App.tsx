@@ -290,6 +290,22 @@ export const App: React.FC = () => {
               <div className="bg-white rounded-xl border border-zinc-200 p-6 text-center text-xs text-zinc-500">
                 Loading today&apos;s cadence telemetry...
               </div>
+            ) : goals.length === 0 ? (
+              <div className="bg-white rounded-xl border border-zinc-200 p-6 text-center space-y-3 shadow-micro">
+                <p className="text-xs font-medium text-zinc-800">
+                  No active goals yet — your Cadence is a clean slate.
+                </p>
+                <p className="text-[11px] text-zinc-500">
+                  Send a voice note or text in Telegram, or click below to build your Annual → Daily Goal Cascade.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setOnboardingOpen(true)}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition shadow-micro"
+                >
+                  <span>Build My Goal Cascade</span>
+                </button>
+              </div>
             ) : (
               goals.map((goal) => (
                 <TodayCheckInCard
@@ -343,8 +359,8 @@ export const App: React.FC = () => {
       <OnboardingModal
         isOpen={onboardingOpen}
         onClose={() => setOnboardingOpen(false)}
-        onLockedIn={() => {
-          setCoachBanner('New AI Goal Cascade locked in across all 4 horizons.');
+        onLockedIn={(msg) => {
+          setCoachBanner(msg || 'New AI Goal Cascade locked in across all 4 horizons.');
           refreshAll();
         }}
       />

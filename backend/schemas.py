@@ -142,7 +142,8 @@ class GoalCreateOrUpdateRequest(BaseModel):
 
 
 class OnboardingBrainDumpRequest(BaseModel):
-    text: str
+    text: Optional[str] = None
+    ogg_audio_base64: Optional[str] = None
     less_aggressive: bool = False
 
 

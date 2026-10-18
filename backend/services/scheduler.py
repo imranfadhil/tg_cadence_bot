@@ -185,8 +185,10 @@ async def run_ritual_tick() -> None:
                     reply_markup=build_evening_pulse_keyboard(view.goals),
                 )
 
-            # 4. Weekly Sunday Strategy (Sunday 18:00 Local)
+            # 4. Weekly Sunday Strategy (Sunday 18:00 Local) & Monthly Horizon Audit (Last Sunday)
             if now_local.weekday() == 6 and hhmm == "18:00":
+                from backend.services.coach_ai import generate_strategy_diagnostic
+
                 scorecard = await get_scorecard(session, user.id)
                 last_day_of_month = calendar.monthrange(today_local.year, today_local.month)[1]
                 is_last_sunday = (last_day_of_month - today_local.day) < 7
@@ -200,11 +202,17 @@ async def run_ritual_tick() -> None:
                     f"• <b>{h.monthly_title}</b>: Weekly Exec <code>{h.weekly_execution_pct}%</code> → Monthly Milestone <code>{h.monthly_milestone_pct}%</code>"
                     for h in scorecard.horizon_audit
                 ]
+                diag_q = await generate_strategy_diagnostic(
+                    cadence_score=scorecard.summary.cadence_score,
+                    audit_summary="\n".join(audit_lines),
+                    fallback_question=scorecard.diagnostic_question,
+                    is_monthly_audit=is_last_sunday,
+                )
                 body = (
                     f"{header}\n"
                     f"7-Day Rhythm: <code>{scorecard.summary.cadence_score}% On Cadence</code>\n\n"
                     + "\n".join(audit_lines)
-                    + f"\n\n<b>Diagnostic Question:</b>\n<i>{scorecard.diagnostic_question}</i>"
+                    + f"\n\n<b>Diagnostic Question:</b>\n<i>{diag_q}</i>"
                 )
                 await _bot_instance.send_message(
                     chat_id=user.id,

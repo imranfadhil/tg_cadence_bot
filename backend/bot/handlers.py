@@ -20,6 +20,9 @@ from backend.schemas import CascadeProposal
 from backend.services.coach_ai import (
     decompose_goals_to_cascade,
     generate_coach_reply,
+    generate_goal_cascade,
+    generate_strategy_diagnostic,
+    quick_coach_reply,
     scale_down_proposal,
     transcribe_voice_note,
 )
@@ -118,9 +121,9 @@ async def cmd_setup(message: Message, db: AsyncSession, db_user: User) -> None:
         return
 
     status_msg = await message.answer(
-        "⚙️ <i>Decomposing goals into Multi-Horizon Cascade...</i>", parse_mode="HTML"
+        "⚙️ <i>Decomposing goals into Multi-Horizon Cascade (MODEL_SMART)...</i>", parse_mode="HTML"
     )
-    proposal = await decompose_goals_to_cascade(raw_args, less_aggressive=False)
+    proposal = await generate_goal_cascade(user_text=raw_args, less_aggressive=False)
     state.pending_proposal_json = proposal.model_dump_json()
     state.awaiting_onboarding_input = 0
     await db.commit()
@@ -136,9 +139,12 @@ async def cmd_setup(message: Message, db: AsyncSession, db_user: User) -> None:
 async def handle_voice_onboarding(
     message: Message, bot: Bot, db: AsyncSession, db_user: User
 ) -> None:
-    """Downloads the `.ogg` voice buffer in memory and transcribes via Groq Whisper / OpenRouter."""
+    """
+    Section 4.1 & 6.3: Downloads the `.ogg` voice buffer in memory and passes it directly
+    to `generate_goal_cascade` (native base64 `input_audio` via MODEL_SMART, or Groq Whisper fallback).
+    """
     status_msg = await message.answer(
-        "🎙️ <i>Transcribing voice note & building Cascade Tree...</i>",
+        "🎙️ <i>Processing .ogg voice note & building Cascade Tree (MODEL_SMART)...</i>",
         parse_mode="HTML",
     )
     voice = message.voice
@@ -148,8 +154,14 @@ async def handle_voice_onboarding(
         if file_info.file_path:
             await bot.download_file(file_info.file_path, destination=buf)
 
-    transcript = await transcribe_voice_note(buf.getvalue(), mime_type="audio/ogg")
-    proposal = await decompose_goals_to_cascade(transcript, less_aggressive=False)
+    ogg_bytes = buf.getvalue()
+    caption_text = (message.caption or "").strip() or None
+
+    proposal = await generate_goal_cascade(
+        user_text=caption_text,
+        ogg_audio_bytes=ogg_bytes,
+        less_aggressive=False,
+    )
 
     state = await _get_or_create_coach_state(db, db_user.id)
     state.pending_proposal_json = proposal.model_dump_json()
@@ -157,8 +169,7 @@ async def handle_voice_onboarding(
     await db.commit()
 
     await status_msg.edit_text(
-        f'📝 <b>Transcript:</b> <i>"{transcript}"</i>\n\n'
-        + format_cascade_preview(proposal),
+        format_cascade_preview(proposal),
         parse_mode="HTML",
         reply_markup=build_onboarding_preview_keyboard(),
     )
@@ -257,11 +268,18 @@ async def cmd_strategy(message: Message, db: AsyncSession, db_user: User) -> Non
         f"• <b>{h.monthly_title}</b>: Weekly Exec <code>{h.weekly_execution_pct}%</code> → Monthly Milestone <code>{h.monthly_milestone_pct}%</code>"
         for h in scorecard.horizon_audit
     ]
+    is_audit = (message.text or "").startswith("/audit")
+    diag_q = await generate_strategy_diagnostic(
+        cadence_score=scorecard.summary.cadence_score,
+        audit_summary="\n".join(audit_lines),
+        fallback_question=scorecard.diagnostic_question,
+        is_monthly_audit=is_audit,
+    )
     text = (
         f"📊 <b>Sunday Strategy & Horizon Audit</b>\n"
         f"7-Day Rhythm: <code>{scorecard.summary.cadence_score}% On Cadence</code>\n\n"
         + "\n".join(audit_lines)
-        + f"\n\n<b>Diagnostic Question:</b>\n<i>{scorecard.diagnostic_question}</i>"
+        + f"\n\n<b>Diagnostic Question:</b>\n<i>{diag_q}</i>"
     )
     await message.answer(
         text,
@@ -374,8 +392,8 @@ async def cb_studio_open_url(callback: CallbackQuery) -> None:
     if callback.message:
         await callback.message.answer(
             f"🎛️ <b>Cadence Studio (Telegram Mini App)</b>\n"
-            f"Open in browser: {settings.MINI_APP_URL}\n"
-            f"<i>(Tip: Set MINI_APP_URL to an https:// URL in .env to launch inline inside Telegram WebApp)</i>",
+            f"Open in browser: {settings.public_webapp_url}\n"
+            f"<i>(Tip: Set WEBAPP_PUBLIC_URL to an https:// URL in .env to launch inline inside Telegram WebApp)</i>",
             parse_mode="HTML",
         )
 
@@ -387,10 +405,10 @@ async def handle_free_text(message: Message, db: AsyncSession, db_user: User) ->
 
     if state.awaiting_onboarding_input == 1 or len(text_input) >= 90:
         status_msg = await message.answer(
-            "⚙️ <i>Mapping Lag Measures → Daily Lead Measures...</i>",
+            "⚙️ <i>Mapping Lag Measures → Daily Lead Measures (MODEL_SMART)...</i>",
             parse_mode="HTML",
         )
-        proposal = await decompose_goals_to_cascade(text_input, less_aggressive=False)
+        proposal = await generate_goal_cascade(user_text=text_input, less_aggressive=False)
         state.pending_proposal_json = proposal.model_dump_json()
         state.awaiting_onboarding_input = 0
         await db.commit()
@@ -408,6 +426,6 @@ async def handle_free_text(message: Message, db: AsyncSession, db_user: User) ->
         f"{view.summary.completed_today}/{view.summary.total_today} daily goals done today, "
         f"max streak {view.summary.active_streak_days}d."
     )
-    reply = await generate_coach_reply(text_input, context_str)
+    reply = await quick_coach_reply(text_input, context_str)
     await message.answer(reply)
 

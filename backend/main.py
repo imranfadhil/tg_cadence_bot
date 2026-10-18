@@ -84,6 +84,7 @@ async def _start_cloudflare_quick_tunnel(
             if match:
                 tunnel_url = match.group(0)
                 settings.MINI_APP_URL = tunnel_url
+                settings.WEBAPP_PUBLIC_URL = tunnel_url
                 logger.info("Cloudflare HTTPS Quick Tunnel ready: %s", tunnel_url)
                 await _configure_bot_menu_button(bot, tunnel_url)
 
@@ -125,7 +126,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         )
 
     # 4. Configure Mini App HTTPS URL (explicit domain or automatic Cloudflare Quick Tunnel)
-    configured_url = (settings.MINI_APP_URL or "").strip()
+    configured_url = settings.public_webapp_url
     if configured_url.startswith("https://"):
         await _configure_bot_menu_button(bot, configured_url)
     elif not configured_url or (

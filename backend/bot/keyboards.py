@@ -9,7 +9,7 @@ from backend.schemas import TodayGoalCardDTO
 
 def _studio_button(label: str) -> InlineKeyboardButton:
     """Returns a native Telegram WebApp button if HTTPS is configured, or callback fallback for HTTP localhost."""
-    url = (settings.MINI_APP_URL or "").strip()
+    url = settings.public_webapp_url
     if url.startswith("https://"):
         return InlineKeyboardButton(text=label, web_app=WebAppInfo(url=url))
     return InlineKeyboardButton(text=label, callback_data="studio:open_url")

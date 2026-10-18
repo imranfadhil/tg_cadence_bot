@@ -238,8 +238,18 @@ async def api_onboarding_decompose(
     payload: OnboardingBrainDumpRequest,
     _user_id: int = Depends(resolve_current_user_id),
 ) -> CascadeProposal:
-    proposal = await decompose_goals_to_cascade(
-        payload.text, less_aggressive=payload.less_aggressive
+    from backend.services.coach_ai import generate_goal_cascade
+    import base64
+
+    ogg_bytes = (
+        base64.b64decode(payload.ogg_audio_base64)
+        if payload.ogg_audio_base64
+        else None
+    )
+    proposal = await generate_goal_cascade(
+        user_text=payload.text,
+        ogg_audio_bytes=ogg_bytes,
+        less_aggressive=payload.less_aggressive,
     )
     return proposal
 

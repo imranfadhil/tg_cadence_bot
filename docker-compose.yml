@@ -1,0 +1,14 @@
+services:
+  cadence:
+    build: .
+    container_name: cadence_app
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./data:/app/data
+    ports:
+      - "127.0.0.1:8040:8000" # Reverse proxy via existing Nginx/Caddy on droplet
+    deploy:
+      resources:
+        limits:
+          memory: 150M
